@@ -20,7 +20,7 @@ def test_restart_is_the_first_sharp_acceleration_after_a_slow_period():
 
 def test_a_ramp_of_exactly_half_a_second_is_still_a_restart():
     speed = speed_with_kick()
-    speed[200:212] = 4.0                             # neither calm nor fast for 12 frames
+    speed[200:212] = 4.0  # neither calm nor fast for 12 frames
     assert dead_ball.find_restart(speed, 100, 350) == 200
 
 
@@ -40,10 +40,10 @@ def test_a_ball_that_never_accelerates_has_no_restart():
 
 def test_earlier_open_play_acceleration_without_a_slow_period_is_skipped():
     speed = speed_with_kick()
-    speed[110:113] = 1.0                             # a brief dip is not a stoppage
+    speed[110:113] = 1.0  # a brief dip is not a stoppage
     speed[:110] = 9.0
     speed[113:200] = 0.3
-    speed[113:125] = 9.0                             # re-acceleration after the dip
+    speed[113:125] = 9.0  # re-acceleration after the dip
     assert dead_ball.find_restart(speed, 100, 350) == 200
 
 
@@ -97,8 +97,8 @@ def test_ball_running_along_the_line_is_not_edge_evidence():
 
 def test_still_ball_needs_a_second_and_a_half():
     speed = np.full(300, 6.0)
-    speed[100:136] = 0.1                             # 36 frames: under 1.5 s
-    speed[200:237] = 0.1                             # 37 frames: long enough
+    speed[100:136] = 0.1  # 36 frames: under 1.5 s
+    speed[200:237] = 0.1  # 37 frames: long enough
     slow = np.ones(300)
     evidence = dead_ball.still_ball_evidence(speed, slow)
     assert evidence[100:136].sum() == 0 and evidence[200:237].all()

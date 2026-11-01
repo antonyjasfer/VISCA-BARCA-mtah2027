@@ -2,8 +2,8 @@
 
 Team switches are gated: a direct H -> A is only possible on frames of an away control event or an
 away restart, and the mirror for A -> H (control.py, dead_ball.py). The owner can also change across
-a D segment, because the end of a stoppage is a restart; D -> H and D -> A are not gated, and where
-the restarting team is unknown the owner after the stoppage is a tie, which goes to H.
+a D segment, because the end of a stoppage is a restart; D -> H and D -> A are not gated. The team
+that takes the restart comes from dead_ball.resolve_restart_teams.
 """
 
 import numpy as np
@@ -23,12 +23,12 @@ P_TO_DEAD = 0.0015
 # About 50 dead minutes over those 110 stoppages: 27 s each (680 frames), split between the teams.
 P_FROM_DEAD = 0.00075
 
-RESTART_SPAN = 25       # 1 s after a restart: the restarting team holds the gate and the evidence
+RESTART_SPAN = 25  # 1 s after a restart: the restarting team holds the gate and the evidence
 
 # --- dead-ball emission ---------------------------------------------------------------------------
 # D exists only inside a D segment. If it were reachable anywhere, a one-frame H -> D -> A would be a
 # way round the switch gate; a stoppage is what makes a change of owner at its end a restart.
-P_DEAD_IN_SEGMENT = 0.90     # at least this inside a D segment (dead_ball.dead_segments)
+P_DEAD_IN_SEGMENT = 0.90  # at least this inside a D segment (dead_ball.dead_segments)
 P_DEAD_CEILING = 0.99
 
 NEVER = -1e9
@@ -54,8 +54,8 @@ def restart_evidence(restarts, n_frames):
             continue
         home = restart.team == control.HOME
         stop = restart.frame + RESTART_SPAN
-        llr[restart.frame:stop] += control.LLR_CONTROL if home else -control.LLR_CONTROL
-        (open_home if home else open_away)[restart.frame:stop] = True
+        llr[restart.frame : stop] += control.LLR_CONTROL if home else -control.LLR_CONTROL
+        (open_home if home else open_away)[restart.frame : stop] = True
     return llr, open_home, open_away
 
 
@@ -72,15 +72,16 @@ def viterbi(log_emit, open_home, open_away):
 
     delta = log_emit[0] + np.log(1.0 / 3.0)
     back = np.zeros((n, 3), dtype=np.int8)
-    log_t = np.array([[stay, NEVER, to_dead], [NEVER, stay, to_dead],
-                      [from_dead, from_dead, stay_dead]])
+    log_t = np.array(
+        [[stay, NEVER, to_dead], [NEVER, stay, to_dead], [from_dead, from_dead, stay_dead]]
+    )
     for t in range(1, n):
         # the leaving side of a pair pays for the open gate of the team that may arrive
         log_t[H, H] = stay_open if open_away[t] else stay
         log_t[H, A] = switch if open_away[t] else NEVER
         log_t[A, A] = stay_open if open_home[t] else stay
         log_t[A, H] = switch if open_home[t] else NEVER
-        scores = delta[:, None] + log_t          # [from, to]
+        scores = delta[:, None] + log_t  # [from, to]
         best = scores.argmax(axis=0)
         back[t] = best
         delta = scores[best, np.arange(3)] + log_emit[t]

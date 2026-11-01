@@ -16,8 +16,8 @@ import pandas as pd
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
-from games import GAME, GAMES, half_video_blocks  # noqa: E402
-from starter.load_smart_tagging import load as load_smart_tagging  # noqa: E402
+from games import GAME, GAMES, half_video_blocks
+from starter.load_smart_tagging import load as load_smart_tagging
 
 ATTACKING_CODES = {"build up", "progression", "creating chances", "attacking transition"}
 DEFENDING_PREFIX = "defending"
@@ -56,7 +56,9 @@ def half_summary(labels, fps):
         "live_min": np.sum(labels != "D") / float(fps) / 60.0,
         "d_share": float(np.mean(labels == "D")),
         "possessions": len(lengths),
-        "p10": float(p10), "p50": float(p50), "p90": float(p90),
+        "p10": float(p10),
+        "p50": float(p50),
+        "p90": float(p90),
         "under_2s": int(np.sum(seconds < SHORT_POSSESSION_S)),
     }
 
@@ -69,7 +71,7 @@ def tag_agreement(labels, events, blocks):
     """
     graded = np.zeros(len(labels), dtype=bool)
     for _, first, last in blocks:
-        graded[first:last + 1] = True
+        graded[first : last + 1] = True
 
     hits = {"attacking": 0, "defending": 0}
     totals = {"attacking": 0, "defending": 0}
@@ -84,13 +86,14 @@ def tag_agreement(labels, events, blocks):
             kind, expected = "defending", OTHER_SIDE[side]
         else:
             continue
-        part = labels[event["start_frame"]:event["end_frame"]]
-        part = part[graded[event["start_frame"]:event["end_frame"]]]
+        part = labels[event["start_frame"] : event["end_frame"]]
+        part = part[graded[event["start_frame"] : event["end_frame"]]]
         live = part[np.isin(part, ("H", "A"))]
         hits[kind] += int(np.sum(live == expected))
         totals[kind] += len(live)
-    return {kind: hits[kind] / float(totals[kind]) if totals[kind] else float("nan")
-            for kind in hits}
+    return {
+        kind: hits[kind] / float(totals[kind]) if totals[kind] else float("nan") for kind in hits
+    }
 
 
 def set_piece_coverage(labels, events, fps):
@@ -98,9 +101,10 @@ def set_piece_coverage(labels, events, fps):
     reach = COVERAGE_REACH_S * fps
     pieces = [event for event in events if _code(event) == SET_PIECE_CODE]
     covered = sum(
-        int(np.sum(labels[max(0, e["start_frame"] - reach):e["start_frame"] + reach + 1] == "D"))
+        int(np.sum(labels[max(0, e["start_frame"] - reach) : e["start_frame"] + reach + 1] == "D"))
         >= COVERAGE_MIN_DEAD_S * fps
-        for e in pieces)
+        for e in pieces
+    )
     return covered / float(len(pieces)) if pieces else float("nan")
 
 
@@ -109,9 +113,9 @@ def report(path, events, blocks, fps):
     labels = raw.copy()
     rows = []
     for half, first, last in blocks:
-        labels[first:last + 1] = fill_abstentions(raw[first:last + 1])
-        rows.append((half, half_summary(labels[first:last + 1], fps)))
-    graded = np.concatenate([raw[first:last + 1] for _, first, last in blocks])
+        labels[first : last + 1] = fill_abstentions(raw[first : last + 1])
+        rows.append((half, half_summary(labels[first : last + 1], fps)))
+    graded = np.concatenate([raw[first : last + 1] for _, first, last in blocks])
     return {
         "halves": rows,
         "agreement": tag_agreement(labels, events, blocks),
@@ -129,26 +133,54 @@ def main():
     fps = GAMES[GAME]["fps"]
     events = load_smart_tagging(GAME)
 
-    print("{:<20} {:>4} {:>8} {:>7} {:>5} {:>6} {:>6} {:>6} {:>5}".format(
-        "submission", "half", "live min", "D share", "poss", "p10 s", "p50 s", "p90 s", "<2 s"))
+    print(
+        "{:<20} {:>4} {:>8} {:>7} {:>5} {:>6} {:>6} {:>6} {:>5}".format(
+            "submission", "half", "live min", "D share", "poss", "p10 s", "p50 s", "p90 s", "<2 s"
+        )
+    )
     summaries = []
     for path in args.submissions:
         name = os.path.splitext(os.path.basename(path))[0]
         out = report(path, events, blocks, fps)
         summaries.append((name, out))
         for half, row in out["halves"]:
-            print("{:<20} {:>4} {:>8.1f} {:>7.3f} {:>5} {:>6.1f} {:>6.1f} {:>6.1f} {:>5}".format(
-                name, half, row["live_min"], row["d_share"], row["possessions"],
-                row["p10"], row["p50"], row["p90"], row["under_2s"]))
+            print(
+                "{:<20} {:>4} {:>8.1f} {:>7.3f} {:>5} {:>6.1f} {:>6.1f} {:>6.1f} {:>5}".format(
+                    name,
+                    half,
+                    row["live_min"],
+                    row["d_share"],
+                    row["possessions"],
+                    row["p10"],
+                    row["p50"],
+                    row["p90"],
+                    row["under_2s"],
+                )
+            )
     print()
-    print("{:<20} {:>10} {:>10} {:>10} {:>10} {:>9} {:>8}".format(
-        "submission", "live total", "poss total", "attack ok", "defend ok", "set piece", "X share"))
+    print(
+        "{:<20} {:>10} {:>10} {:>10} {:>10} {:>9} {:>8}".format(
+            "submission",
+            "live total",
+            "poss total",
+            "attack ok",
+            "defend ok",
+            "set piece",
+            "X share",
+        )
+    )
     for name, out in summaries:
-        print("{:<20} {:>10.1f} {:>10} {:>10.3f} {:>10.3f} {:>9.3f} {:>8.3f}".format(
-            name, sum(r["live_min"] for _, r in out["halves"]),
-            sum(r["possessions"] for _, r in out["halves"]),
-            out["agreement"]["attacking"], out["agreement"]["defending"],
-            out["coverage"], out["x_share"]))
+        print(
+            "{:<20} {:>10.1f} {:>10} {:>10.3f} {:>10.3f} {:>9.3f} {:>8.3f}".format(
+                name,
+                sum(r["live_min"] for _, r in out["halves"]),
+                sum(r["possessions"] for _, r in out["halves"]),
+                out["agreement"]["attacking"],
+                out["agreement"]["defending"],
+                out["coverage"],
+                out["x_share"],
+            )
+        )
 
 
 if __name__ == "__main__":

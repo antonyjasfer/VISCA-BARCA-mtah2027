@@ -78,14 +78,16 @@ def test_relative_speed_is_zero_when_ball_and_player_move_together():
 def test_relative_speed_sees_a_ball_passing_a_standing_player():
     n = 60
     t = np.arange(n, dtype=np.float64) / features.FPS
-    rel = features.relative_speed(np.zeros((n, 1)), np.zeros((n, 1)), 15.0 * t, np.zeros(n),
-                                  np.zeros(n, dtype=np.int64))
+    rel = features.relative_speed(
+        np.zeros((n, 1)), np.zeros((n, 1)), 15.0 * t, np.zeros(n), np.zeros(n, dtype=np.int64)
+    )
     assert abs(np.nanmedian(rel) - 15.0) < 1e-9
 
 
 def test_nearest_slot_is_reported_with_its_distance():
     px = np.array([[0.0, 3.0, np.nan]])
     py = np.zeros((1, 3))
-    distance, slot = features.nearest_player(px, py, np.array([2.5]), np.zeros(1),
-                                             np.array([True, True, True]))
+    distance, slot = features.nearest_player(
+        px, py, np.array([2.5]), np.zeros(1), np.array([True, True, True])
+    )
     assert distance[0] == 0.5 and slot[0] == 1

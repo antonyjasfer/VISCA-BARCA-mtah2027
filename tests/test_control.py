@@ -1,10 +1,8 @@
-"""Control events, switch gating and abstentions, on synthetic arrays only."""
+"""Control events and switch gating, on synthetic arrays only."""
 
 import numpy as np
 
-from src.possession.control import (AWAY, HOME, ControlEvent, abstain_gaps, control_events,
-                                    switch_evidence)
-from src.possession.diagnostics import fill_abstentions
+from src.possession.control import AWAY, HOME, ControlEvent, control_events, switch_evidence
 
 N = 200
 
@@ -19,7 +17,7 @@ def calm():
 
 def on_ball(start, length):
     d = far()
-    d[start:start + length] = 0.5
+    d[start : start + length] = 0.5
     return d
 
 
@@ -67,49 +65,3 @@ def test_switch_evidence_opens_the_gate_only_during_the_event():
     assert llr[10] < 0 and llr[9] == 0 and llr[22] == 0
     assert open_away[10:22].all() and open_away.sum() == 12
     assert not open_home.any()
-
-
-def present_except(start, stop):
-    present = np.ones(N, dtype=bool)
-    present[start:stop] = False
-    return present
-
-
-def test_long_ball_gap_inside_a_possession_becomes_x():
-    labels = np.full(N, "H", dtype="<U1")
-    out = abstain_gaps(labels, present_except(60, 120), [], [(1, 0, N - 1)])
-    assert (out[60:120] == "X").all() and np.sum(out == "X") == 60
-
-
-def test_gap_of_exactly_two_seconds_stays_labelled():
-    labels = np.full(N, "H", dtype="<U1")
-    out = abstain_gaps(labels, present_except(60, 110), [], [(1, 0, N - 1)])
-    assert not (out == "X").any()
-
-
-def test_gap_with_opposing_control_stays_labelled():
-    labels = np.full(N, "H", dtype="<U1")
-    events = [ControlEvent(AWAY, 70, 82)]
-    out = abstain_gaps(labels, present_except(60, 120), events, [(1, 0, N - 1)])
-    assert not (out == "X").any()
-
-
-def test_gap_with_own_team_control_still_becomes_x():
-    labels = np.full(N, "H", dtype="<U1")
-    events = [ControlEvent(HOME, 70, 82)]
-    out = abstain_gaps(labels, present_except(60, 120), events, [(1, 0, N - 1)])
-    assert (out[60:120] == "X").all()
-
-
-def test_x_is_never_placed_across_a_switch():
-    labels = np.full(N, "H", dtype="<U1")
-    labels[90:] = "A"                                # the switch sits inside the ball gap
-    out = abstain_gaps(labels, present_except(60, 120), [], [(1, 0, N - 1)])
-    assert not (out == "X").any()
-    assert (fill_abstentions(out) == labels).all()
-
-
-def test_x_is_never_placed_on_dead_frames():
-    labels = np.full(N, "D", dtype="<U1")
-    out = abstain_gaps(labels, present_except(60, 120), [], [(1, 0, N - 1)])
-    assert not (out == "X").any()

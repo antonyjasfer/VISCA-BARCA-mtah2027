@@ -16,8 +16,8 @@ import numpy as np
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
-from games import GAME, GAMES, require, source_frames  # noqa: E402
-from starter.baseline import team_of_each_track  # noqa: E402
+from games import GAME, GAMES, require, source_frames
+from starter.baseline import team_of_each_track
 
 FPS = 25
 
@@ -38,17 +38,18 @@ SPEED_HALF_SPAN = 4
 @dataclass
 class Features:
     """One float32 array per feature, length n_frames. NaN means "not observable"."""
-    ball_x: np.ndarray            # m, after short-gap interpolation
+
+    ball_x: np.ndarray  # m, after short-gap interpolation
     ball_y: np.ndarray
-    ball_observed: np.ndarray     # bool: ball seen by the tracker on this exact frame
-    ball_speed: np.ndarray        # m/s
-    d_home: np.ndarray            # m, ball to nearest tracked home player
-    d_away: np.ndarray            # m, ball to nearest tracked away player
-    rel_home: np.ndarray          # m/s, ball velocity relative to that home player
-    rel_away: np.ndarray          # m/s, ball velocity relative to that away player
-    ball_in_pitch: np.ndarray     # 1.0 inside, 0.0 outside (beyond margin), NaN if no ball
-    mean_speed: np.ndarray        # m/s, mean over tracked players
-    n_tracked: np.ndarray         # tracked slots with a position
+    ball_observed: np.ndarray  # bool: ball seen by the tracker on this exact frame
+    ball_speed: np.ndarray  # m/s
+    d_home: np.ndarray  # m, ball to nearest tracked home player
+    d_away: np.ndarray  # m, ball to nearest tracked away player
+    rel_home: np.ndarray  # m/s, ball velocity relative to that home player
+    rel_away: np.ndarray  # m/s, ball velocity relative to that away player
+    ball_in_pitch: np.ndarray  # 1.0 inside, 0.0 outside (beyond margin), NaN if no ball
+    mean_speed: np.ndarray  # m/s, mean over tracked players
+    n_tracked: np.ndarray  # tracked slots with a position
 
     def as_dict(self):
         return dict(self.__dict__)
@@ -150,8 +151,7 @@ def compute(raw_path, meta_path, n_frames, pitch):
     px, py, ps, ball = parse_raw(raw_path, n_frames)
     team = team_of_each_track(meta_path)
     if len(team) != px.shape[1]:
-        raise ValueError("metadata lists {} slots but the raw file has {}".format(
-            len(team), px.shape[1]))
+        raise ValueError(f"metadata lists {len(team)} slots but the raw file has {px.shape[1]}")
 
     px_m = px.astype(np.float64) * length
     py_m = py.astype(np.float64) * width
@@ -168,24 +168,33 @@ def compute(raw_path, meta_path, n_frames, pitch):
     rel_home = relative_speed(px_m, py_m, ball_x, ball_y, slot_home)
     rel_away = relative_speed(px_m, py_m, ball_x, ball_y, slot_away)
 
-    inside = ((ball_x >= -PITCH_MARGIN_M) & (ball_x <= length + PITCH_MARGIN_M)
-              & (ball_y >= -PITCH_MARGIN_M) & (ball_y <= width + PITCH_MARGIN_M))
+    inside = (
+        (ball_x >= -PITCH_MARGIN_M)
+        & (ball_x <= length + PITCH_MARGIN_M)
+        & (ball_y >= -PITCH_MARGIN_M)
+        & (ball_y <= width + PITCH_MARGIN_M)
+    )
     in_pitch = np.where(np.isnan(ball_x), np.nan, inside.astype(np.float64))
 
     tracked = ~np.isnan(px)
     n_tracked = tracked.sum(axis=1)
     speed_ok = ~np.isnan(ps)
-    mean_speed = np.where(speed_ok.sum(axis=1) > 0,
-                          np.where(speed_ok, ps, 0.0).sum(axis=1) / np.maximum(speed_ok.sum(axis=1), 1),
-                          np.nan)
+    mean_speed = np.where(
+        speed_ok.sum(axis=1) > 0,
+        np.where(speed_ok, ps, 0.0).sum(axis=1) / np.maximum(speed_ok.sum(axis=1), 1),
+        np.nan,
+    )
 
-    f32 = lambda a: np.asarray(a, dtype=np.float32)  # noqa: E731
+    f32 = lambda a: np.asarray(a, dtype=np.float32)
     return Features(
-        ball_x=f32(ball_x), ball_y=f32(ball_y),
+        ball_x=f32(ball_x),
+        ball_y=f32(ball_y),
         ball_observed=~np.isnan(observed_x),
         ball_speed=f32(ball_speed_ms(ball_x, ball_y)),
-        d_home=f32(d_home), d_away=f32(d_away),
-        rel_home=f32(rel_home), rel_away=f32(rel_away),
+        d_home=f32(d_home),
+        d_away=f32(d_away),
+        rel_home=f32(rel_home),
+        rel_away=f32(rel_away),
         ball_in_pitch=f32(in_pitch),
         mean_speed=f32(mean_speed),
         n_tracked=n_tracked.astype(np.int16),

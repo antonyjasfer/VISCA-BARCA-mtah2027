@@ -1,17 +1,26 @@
-# Method: v2 control-based possession model
+# Method: v3 rules on the v2 control model
 
-Branch `v2-control`. Reproduce with
+Branch `v3-rules`. Reproduce with
 
 ```
 pip install -r requirements.txt -r requirements-model.txt
-python -m src.possession.pipeline --out evaluation/results/v2_control.csv
-python -m src.possession.diagnostics evaluation/results/v2_control.csv
+python -m src.possession.pipeline --out evaluation/results/v3_rules.csv
+python -m src.possession.diagnostics evaluation/results/v3_rules.csv
 python -m pytest tests -q
 ```
 
 The run is deterministic (no randomness, Viterbi ties go to the lower state index). `--cache PATH`
 stores the extracted features as an `.npz`; a cached and an uncached run produce a byte-identical
-file. A cache written by v1 lacks `rel_home`/`rel_away` and fails loudly.
+file. A cache written by v1 lacks `rel_home`/`rel_away` and fails loudly. Source is kept with
+`ruff check --fix` and `ruff format`, both at `--line-length 100`.
+
+## What v3 changed from v2
+
+1. **No graded X.** Graded frames always carry the decoded label.
+2. **Restart team without a home default** (section 2).
+3. **Touch merge** (section 5).
+4. **Goal and standstill stoppages** (section 2).
+5. **Code hygiene.** Ruff; the labels were confirmed byte-identical before and after.
 
 ## Principles
 
@@ -62,6 +71,7 @@ below the 0.5 threshold need a second cue to agree.
 
 | evidence `c_i` | weight | reasoning |
 |---|---|---|
+| **v3** standstill: 3 s median speed < 1.0 m/s and ball still or missing, for >= 8 s, nudges under 1 s bridged | 0.95 | Injury, VAR, substitution. 1.0 m/s is under a walk (~1.4 m/s) and is the whole-match 25th percentile. A keeper may hold the ball about 6 s with outfield players moving into shape, so both conditions must hold for longer than that. |
 | ball outside the pitch for >= 0.5 s, held across tracking gaps for up to 10 s | 0.90 | The laws of the game. Runs under 0.5 s are noise. |
 | **new** run-up to a located restart: tag start - 10 s (- 30 s after a goal) to the restart | 0.85 | The ball is dead until the restart. 30 s covers a celebration and the walk back. |
 | **new** ball still (< 0.8 m/s) for >= 1.5 s, times collective slowness | 0.80 | Replaces v1's 1 s still-ball cue. A goalkeeper's hold is the known false positive, and the slowness term limits it. |
@@ -82,10 +92,29 @@ speed crosses 6 m/s (softer than any real restart) from below 2 m/s (a ball bein
 stoppage. D runs up to that frame, and the score is forced to 0 for the 3 s after it. 47 of the 59
 tags are located; the other 12 use the weak fallback.
 
-**Restart team.** The tag's `Team` when it names a club (assumed to be the taking team). `N/A`, which
-includes every throw-in, falls back to the team nearest the ball from 12 frames before to 2 frames
-after the restart, by median distance. A D segment with no located restart within 2 s of its end gets
-a restart at its end, with the team nearest during the next second.
+**Restart team (v3).** A D segment with no located restart within 2 s of its end gets a restart at its
+end. Each restart then takes the first rule that gives an answer, and an exact distance tie is no
+answer, so no rule defaults to a side:
+
+| rule | restarts | definition |
+|---|---|---|
+| `tag` | 23 | The set piece's `Team` when it names a club (assumed to be the taking team). |
+| `out` | 39 | The ball left the pitch in this stoppage: seen beyond a line for >= 0.5 s, or lost within 1 m of one for >= 1 s. The search runs from 2 s before the D segment, or 15 s back without one, and takes the earliest crossing. The team that came closest in the 1 s before it touched it last, so the other team restarts. Skipped for kickoffs: the ball has not left play before a half opens, and after a goal the nearest player at the line is often the conceding keeper. |
+| `nearest` | 68 | The team nearest at the restart, by median distance from 12 frames before to 2 after. For a D-segment restart, over the next second. |
+| `phase` | 14 | The team on the ball in the next team-tagged phase, mirrored for `DEFENDING` tags. |
+| unknown | 2 | Carries the owner from before the stoppage through a second decode, so there is no tie to break. |
+
+**Restart team is not validated.** On the 23 tagged restarts the other rules agree with the tag 9 times,
+and tag vs nearest at the restart is 13 of 23. Every rule agrees with the next team-tagged phase about
+half the time, but that phase is a median 20 s away, so it is too late to judge a restart. No label-free
+signal here confirms or refutes these rules, and that aggregate check changed no parameter.
+
+**Goal stoppages (v3).** D from the goal to the kickoff that follows. The `GOALS` tag is not the goal: an
+aggregate profile around the 4 tag starts shows active play at +10 to +30 s and the ball gone from
++30 s, and the tag runs to the kickoff (70-250 s). So the goal is the start of the longest ball absence
+inside the tag, which must last at least 5 s (a celebration hides the ball far longer than a dropout).
+Without one, nothing is forced, because the tag start would turn live play into D. All 4 goals resolve,
+forcing 9.6 minutes.
 
 **Pre-kickoff rule.** Score 1 from a half's first graded frame to its `Kick Off (Start)` tag.
 
@@ -104,7 +133,7 @@ of control frames for one team, with flickers of up to 3 frames bridged.
 | `MIN_CONTROL_FRAMES` | 12 | 0.5 s. A touch or deflection is over well before this. |
 | `BRIDGE_FRAMES` | 3 | 0.12 s is tracker noise. |
 | `LLR_CONTROL` | 0.5 nats/frame | See below. |
-| `MAX_SILENT_GAP` | 50 frames | The 2 s rule for writing X. |
+| `MAX_TOUCH_FRAMES` | 37 | Touch merge, under 1.5 s. See section 5. |
 
 In a duel only the closer team can hold a frame, so a real contest fragments and produces no event.
 
@@ -133,15 +162,17 @@ no answer changes the owner. Outside events and restarts the evidence is 0 and t
 **Dead emission.** P(dead) = clip(score, 0.9, 0.99) inside a segment, and D is impossible outside one.
 Segments therefore decide stoppages and Viterbi decides ownership.
 
-## 5. Abstentions (`control.abstain_gaps`)
+## 5. Touch merge (`control.merge_touches`)
 
-A ball gap over 2 s strictly inside one possession, with no opposing control event in it, becomes `X`.
-The gap must not touch either end of the possession, so the scorer's fill reproduces the decoded labels
-exactly; the pipeline asserts this. `X` therefore never crosses a switch.
+CHALLENGE.md: a touch or a deflection is not a change of possession. After decoding, in a live sequence
+X-Y-X with no D between, a Y of under 1.5 s (at most 37 frames) is relabelled X. It repeats left to right
+until nothing changes, so a ping-pong collapses into the surrounding possession. X-Y-D is left alone, as
+is a run at the edge of a half, and nothing merges across D: a stoppage ends the sequence.
 
-This changes nothing on spellF1 and costs macroF1, because `X` is a miss there. The decoded label would
-have filled to the same value. It is kept because the brief asks for it, but it is an obvious thing to
-reconsider, since macroF1 is the first tie-break.
+**Why 1.5 s.** A touch, a block and the ball coming straight back fit inside it, while really winning the
+ball takes a receive plus one action. It also sits above the 0.5 s minimum control event and the longest
+event Viterbi's own flip-and-flip-back cost can absorb (about 0.6 s). The cost is that a genuine turnover
+lost again inside 1.5 s disappears. It relabelled 131 frames over the match.
 
 ## 6. Diagnostics (`diagnostics.py`)
 
@@ -156,14 +187,33 @@ for `DEFENDING` tags, set-piece coverage and X share. X is filled as the scorer 
 * **Still ball as a soft cue (1 s, weight 0.40).** Replaced by the 1.5 s cue tied to slowness.
 * **`SET PIECES` anchor ending at the tag start.** The profile shows the stoppage runs past it.
 * **`P_DEAD_OUTSIDE_CAP` and the P(dead) floor.** Removed with the rule that D exists only in segments.
+* **Graded X (v2, dropped in v3).** The scorer fills an X with the previous label, so spellF1 could not
+  gain and macroF1 lost those frames.
 
-## Known limitations of v2
+## Result, scored once with parameters frozen
 
-* **Live time is still high.** 61.3 minutes against the 52-58 prior. No further change was made
+Public window, 5-95% bootstrap interval on spellF1 (1000 draws, 17 possessions):
+
+| submission | macroF1 | spellF1 | spellF1 interval | public poss | frag |
+|---|---|---|---|---|---|
+| `v3_rules` | 0.8129 | 0.4857 | 0.2857 .. 0.6798 | 11 | 0.67 |
+| `v2_control` | 0.7820 | 0.5333 | 0.3467 .. 0.7333 | 13 | 0.76 |
+| `v1_hmm` | 0.7072 | 0.3360 | 0.1440 .. 0.5321 | 8 | 0.52 |
+| `baseline_smooth50` | 0.6207 | 0.3256 | 0.2140 .. 0.4465 | 26 | 1.43 |
+
+v3 and v2 are not separable: the intervals overlap almost entirely and the board puts the noise band
+near 0.39 here. Nothing was changed after this table.
+
+## Known limitations of v3
+
+* **Under-segmentation on the public window.** 11 possessions against 17, fewer than v2, which fits the
+  touch merge and goal stoppages removing runs. It was seen after freezing and not tuned.
+* **Live time is still high.** 60.2 minutes against the 52-58 prior. No further change was made
   without a football reason for it.
-* **Restart team unknown.** 22 restarts have no team (ball unseen). D -> H and D -> A are ungated, so
-  the owner after those stoppages is a tie that goes to H, a small home bias until the next control
-  event. A D state that remembers the previous owner would fix it.
+* **Restart team.** Unvalidated (section 2). The 2 unknown restarts carry the owner from the first
+  decode, one pass only; with no owner before them they would stay a tie.
+* **Earliest crossing.** The `out` rule takes the first crossing in its window, which for a restart with
+  no D segment behind it can be an older, unrelated one.
 * **False restarts.** Any fast ball after a calm second inside the 15 s search counts, so an open-play
   pass can be taken for the restart. Restart evidence totals 12.5 nats, twice a minimum control event,
   so a wrong team or false restart flips possession alone.
