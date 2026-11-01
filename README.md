@@ -54,13 +54,12 @@ This runs the full pipeline, writes `submissions/VISCA BARCA.csv`, runs
 
 Expected SHA-256:
 
-| | |
-|---|---|
-| Windows (CRLF, how we produced our file) | `69d5d3bcbb80c1df88267462ada4cf2ac55e3e04e56f6d7dcaa0b033ddd214f4` |
-| Any platform, line endings normalised to LF | `a93bba3914b38fda65206339f3c54c78f2d204a35b87d84edca101dbb8264dbd` |
+```
+a93bba3914b38fda65206339f3c54c78f2d204a35b87d84edca101dbb8264dbd
+```
 
-The file is written in text mode, so the line endings, and therefore the file's own hash, follow the
-platform. The script prints both. Our reproduction was tested on Windows only.
+The file is written with LF line endings on every OS, so this one hash applies everywhere. Our
+reproduction was tested on Windows.
 
 ## Tests and label-free checks
 
@@ -69,10 +68,12 @@ pip install -r requirements-dev.txt
 python -m pytest tests -q
 python -m src.possession.diagnostics "submissions/VISCA BARCA.csv"
 python -m src.possession.ablation
+python scripts/set_piece_profile.py
+python scripts/goal_profile.py
 ```
 
-Everything added by the team is in `make_submission.py`, `src/possession/`, `tests/`, `METHOD.md` and
-`TECHNICAL_REPORT.md`. The organisers' scorer in `evaluation/` is unchanged.
+Everything added by the team is in `make_submission.py`, `src/possession/`, `scripts/`, `tests/`,
+`METHOD.md` and `TECHNICAL_REPORT.md`. The organisers' scorer in `evaluation/` is unchanged.
 
 ---
 

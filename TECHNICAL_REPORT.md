@@ -114,6 +114,10 @@ The ball is missing on about 41% of graded frames, and most gaps are long: inter
 share per half against the 52-58 minutes of typical effective playing time; possession counts and
 durations; agreement with team-tagged phases; set-piece coverage.
 
+**Timing profiles.** `scripts/set_piece_profile.py` and `scripts/goal_profile.py` print collective speed and
+ball visibility by offset from the tag start, as aggregates across all tags. They are what place the
+stoppage around a set-piece tag and show that a `GOALS` tag starts before the goal.
+
 **Blind restart validation.** Each restart rule is compared with the team of the 23 located set pieces
 naming a club, with tags hidden from the rule, since the rules otherwise use the tag and would agree by
 construction. The 4 such set pieces with no located restart cannot be tested.
@@ -142,7 +146,7 @@ of the context in which the v4 selection rules were written. We note this so a r
 
 **Bootstrap.** `run_evaluation.py --bootstrap 1000`, on the public window.
 
-**Tests.** 100 unit tests on synthetic arrays only.
+**Tests.** 100 unit tests on synthetic data only.
 
 ## Results
 
@@ -191,5 +195,6 @@ python make_submission.py
 ```
 
 Python 3.11, with the data in `data/tactical/` (see README.md). The run is deterministic, takes under a
-minute, writes `submissions/VISCA BARCA.csv`, validates it and prints its SHA-256. A fresh clone with a
-fresh environment reproduced the identical file on Windows; the expected hashes are in README.md.
+minute, writes `submissions/VISCA BARCA.csv` with LF line endings, validates it and prints its SHA-256.
+A fresh clone with a fresh environment reproduced the identical file on Windows; the expected hash is in
+README.md.

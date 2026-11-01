@@ -244,7 +244,7 @@ for `DEFENDING` tags, set-piece coverage and X share. X is filled as the scorer 
 
 ## Result, scored once with parameters frozen
 
-Each version was scored once, when it was finished. The v4 defaults were committed (`cb31d40`) before
+Each version was scored once, when it was finished. The v4 defaults were committed (`0bb0672`) before
 its scoring run.
 
 Public window, 5-95% bootstrap interval on spellF1 (1000 draws, 17 possessions):

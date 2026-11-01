@@ -17,7 +17,6 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 from games import GAME, GAMES, half_video_blocks
-from starter.baseline import write_submission
 from starter.load_smart_tagging import load as load_smart_tagging
 
 from . import control, dead_ball, hmm
@@ -52,6 +51,16 @@ def restart_validation(restarts, events, in_segment, feats, pitch):
         "first_control": team_agreement(truth, [r.team for r in full]),
         "control_only": team_agreement(truth, [r.team for r in with_control]),
     }
+
+
+def write_labels(path, labels):
+    """A frame,label CSV with LF line endings on every OS, so the file's hash does not depend on it."""
+    folder = os.path.dirname(path)
+    if folder:
+        os.makedirs(folder, exist_ok=True)
+    with open(path, "w", newline="\n") as handle:
+        handle.write("frame,label\n")
+        handle.writelines(f"{frame},{label}\n" for frame, label in enumerate(labels))
 
 
 def finish_labels(decoded, blocks, config):
@@ -124,7 +133,7 @@ def main():
 
     started = time.time()
     labels, graded, summary, blocks = run(cache=args.cache)
-    write_submission(args.out, labels)
+    write_labels(args.out, labels)
 
     shares = {k: float(np.mean(labels[graded] == k)) for k in "HADX"}
     lengths = np.concatenate(
