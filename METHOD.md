@@ -241,25 +241,32 @@ for `DEFENDING` tags, set-piece coverage and X share. X is filled as the scorer 
 
 ## Result, scored once with parameters frozen
 
+Each version was scored once, when it was finished. The v4 defaults were committed (`cb31d40`) before
+its scoring run.
+
 Public window, 5-95% bootstrap interval on spellF1 (1000 draws, 17 possessions):
 
 | submission | macroF1 | spellF1 | spellF1 interval | public poss | frag |
 |---|---|---|---|---|---|
+| `v4_restart` | 0.8108 | 0.5333 | 0.3467 .. 0.7333 | 13 | 0.76 |
 | `v3_rules` | 0.8129 | 0.4857 | 0.2857 .. 0.6798 | 11 | 0.67 |
 | `v2_control` | 0.7820 | 0.5333 | 0.3467 .. 0.7333 | 13 | 0.76 |
 | `v1_hmm` | 0.7072 | 0.3360 | 0.1440 .. 0.5321 | 8 | 0.52 |
 | `baseline_smooth50` | 0.6207 | 0.3256 | 0.2140 .. 0.4465 | 26 | 1.43 |
 
-v3 and v2 are not separable: the intervals overlap almost entirely and the board puts the noise band
-near 0.39 here. Nothing was changed after this table.
+v2, v3 and v4 are not separable: the intervals overlap almost entirely and the board puts the noise band
+near 0.39 here. v4 has the same spellF1, possession count, frag and spellF1 interval as v2 on this
+window, so these 5 minutes do not exercise the difference in restart rule. Nothing was changed after
+this table.
 
-## Known limitations of v3
+## Known limitations of v4
 
-* **Under-segmentation on the public window.** 11 possessions against 17, fewer than v2, which fits the
-  touch merge and goal stoppages removing runs. It was seen after freezing and not tuned.
+* **Under-segmentation on the public window.** 13 possessions against 17. It was seen after freezing
+  and not tuned.
 * **Live time is still high.** 60.2 minutes against the 52-58 prior. No further change was made
   without a football reason for it.
-* **Restart team.** Unvalidated (section 2). The 2 unknown restarts carry the owner from the first
+* **Restart team.** The best blind agreement with the tag is 11 of 23, with 7 of 10 where a control event
+  answers, and half the restarts get no event. The 2 unknown restarts carry the owner from the first
   decode, one pass only; with no owner before them they would stay a tie.
 * **Earliest crossing.** The `out` rule takes the first crossing in its window, which for a restart with
   no D segment behind it can be an older, unrelated one.
