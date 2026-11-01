@@ -19,6 +19,8 @@ if ROOT not in sys.path:
 from games import GAME, GAMES, half_video_blocks
 from starter.load_smart_tagging import load as load_smart_tagging
 
+from .control import AWAY, HOME
+
 ATTACKING_CODES = {"build up", "progression", "creating chances", "attacking transition"}
 DEFENDING_PREFIX = "defending"
 SET_PIECE_CODE = "set pieces"
@@ -108,8 +110,34 @@ def set_piece_coverage(labels, events, fps):
     return covered / float(len(pieces)) if pieces else float("nan")
 
 
+def team_agreement(expected, answered):
+    """(agreeing, compared) over the pairs where a rule gave an answer."""
+    pairs = [(a, b) for a, b in zip(expected, answered) if b is not None]
+    return sum(a == b for a, b in pairs), len(pairs)
+
+
+def restart_consistency(restarts, labels):
+    """(agreeing, compared): does the restart team own the first possession after the stoppage?"""
+    sides = {HOME: "H", AWAY: "A"}
+    agreeing = compared = 0
+    for restart in restarts:
+        if restart.team is None:
+            continue
+        frame = restart.frame
+        while frame < len(labels) and labels[frame] == "D":
+            frame += 1
+        if frame < len(labels) and labels[frame] in ("H", "A"):
+            compared += 1
+            agreeing += labels[frame] == sides[restart.team]
+    return agreeing, compared
+
+
 def report(path, events, blocks, fps):
-    raw = pd.read_csv(path)["label"].to_numpy(dtype="<U1")
+    return summarize(pd.read_csv(path)["label"].to_numpy(dtype="<U1"), events, blocks, fps)
+
+
+def summarize(raw, events, blocks, fps):
+    """Everything report() prints, for labels already in memory."""
     labels = raw.copy()
     rows = []
     for half, first, last in blocks:

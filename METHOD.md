@@ -1,11 +1,12 @@
-# Method: v3 rules on the v2 control model
+# Method: v4 restart rule on the control model
 
-Branch `v3-rules`. Reproduce with
+Branch `v4-restart`. Reproduce with
 
 ```
 pip install -r requirements.txt -r requirements-model.txt
-python -m src.possession.pipeline --out evaluation/results/v3_rules.csv
-python -m src.possession.diagnostics evaluation/results/v3_rules.csv
+python -m src.possession.pipeline --out evaluation/results/v4_restart.csv
+python -m src.possession.diagnostics evaluation/results/v4_restart.csv
+python -m src.possession.ablation
 python -m pytest tests -q
 ```
 
@@ -13,6 +14,54 @@ The run is deterministic (no randomness, Viterbi ties go to the lower state inde
 stores the extracted features as an `.npz`; a cached and an uncached run produce a byte-identical
 file. A cache written by v1 lacks `rel_home`/`rel_away` and fails loudly. Source is kept with
 `ruff check --fix` and `ruff format`, both at `--line-length 100`.
+
+## What v4 changed from v3, and how the defaults were chosen
+
+Written before the v4 file was scored. Nothing in this section used `evaluation/gt/`.
+
+**Switches.** `config.py` holds `touch_merge` and `restart_rule`. Numeric constants stay beside their code.
+
+**`first_control` rule.** The restart team is the team of the first control event (section 3) that
+*starts* within 4 s of the restart (`FIRST_CONTROL_REACH`; a restart reaches its first receiver in that
+time, even a goal kick). An event already running at the restart is excluded, as that is a taker standing
+over a dead ball. With no such event it falls back to the set-piece tag, then the v3 chain. The rule was
+chosen because it reuses the definition of control that the rest of the model uses for a change of
+possession. Its known weakness: the first control after a contested corner or long free kick can belong
+to the defending side, so this rule names who secured the ball, which may not be who took the restart.
+The challenge's ground truth is "the team the tracking names as owning it", so that reading is plausible
+but unconfirmed. A control event deliberately overrides a tagged team: if the other side intercepts a
+tagged throw-in 1.2 s later, the restart goes to the interceptor. 74 of 146 restarts get an event, at a
+median of 1.66 s after the restart. For a restart at the end of a D segment, a control event that starts
+a few frames before the segment ends is not counted, and a later opposing event can win instead.
+
+**Blind validation.** `restart_validation` compares each rule with the `Team` of the 23 located set pieces
+naming a club, with the tag and tagged phases hidden from the rule. Otherwise the v3 chain, which starts
+from the tag, and `first_control`, which falls back to it, would agree by construction. The 4 club-tagged
+set pieces with no located restart have no restart instant to test. Agreement with the first possession
+after the stoppage is 144/144 for every variant (the 2 unknown restarts are left out). That is structural (the decoder gives the restart team
+the ball), so it shows the wiring is right and says nothing about the rule being right.
+
+**Ablation** (`python -m src.possession.ablation`, in memory, writes no file, not scored):
+
+| restart_rule | touch_merge | live min | poss | <2 s | attack | defend | set piece | tag blind | next poss |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| v3 | on | 60.2 | 251 | 27 | 0.826 | 0.839 | 0.966 | 9/23 | 144/144 |
+| v3 | off | 60.2 | 261 | 33 | 0.825 | 0.839 | 0.966 | 9/23 | 144/144 |
+| first_control | on | 60.2 | 237 | 18 | 0.828 | 0.840 | 0.966 | 11/23 | 144/144 |
+| first_control | off | 60.2 | 245 | 23 | 0.828 | 0.840 | 0.966 | 11/23 | 144/144 |
+
+Where a control event answers, it agrees with the tag 7 of 10 times. The fallback chain gets the rest,
+4 of 13.
+
+**`restart_rule = "first_control"`.** The decision rule set beforehand: the higher agreement wins, and if
+the gap is under 3 of 23, prefer `first_control`. 11 vs 9 is a gap of 2, so the tie-break decides, and
+`first_control` also leads. 23 restarts cannot separate these rules and the tag's meaning is itself an
+assumption, so this is a low-confidence choice.
+
+**`touch_merge = False`.** The rule set beforehand: keep it only if turning it off raises the <2 s count by
+more than 50%, otherwise turn it off, because over-merging costs two possessions per error in spellF1.
+With `first_control`, off gives 23 against 18, +28% (with `v3`, 33 against 27, +22%). The merge therefore
+removes too little flicker to justify that risk. `merge_touches` stays in the code behind the switch.
 
 ## What v3 changed from v2
 
@@ -92,7 +141,7 @@ speed crosses 6 m/s (softer than any real restart) from below 2 m/s (a ball bein
 stoppage. D runs up to that frame, and the score is forced to 0 for the 3 s after it. 47 of the 59
 tags are located; the other 12 use the weak fallback.
 
-**Restart team (v3).** A D segment with no located restart within 2 s of its end gets a restart at its
+**Restart team (v3 chain; since v4 the fallback behind `first_control`).** A D segment with no located restart within 2 s of its end gets a restart at its
 end. Each restart then takes the first rule that gives an answer, and an exact distance tie is no
 answer, so no rule defaults to a side:
 
@@ -162,7 +211,7 @@ no answer changes the owner. Outside events and restarts the evidence is 0 and t
 **Dead emission.** P(dead) = clip(score, 0.9, 0.99) inside a segment, and D is impossible outside one.
 Segments therefore decide stoppages and Viterbi decides ownership.
 
-## 5. Touch merge (`control.merge_touches`)
+## 5. Touch merge (`control.merge_touches`, off by default since v4)
 
 CHALLENGE.md: a touch or a deflection is not a change of possession. After decoding, in a live sequence
 X-Y-X with no D between, a Y of under 1.5 s (at most 37 frames) is relabelled X. It repeats left to right

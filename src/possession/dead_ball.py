@@ -71,7 +71,8 @@ GOAL_MIN_GAP = 5 * FPS  # a celebration hides the ball far longer than a tracker
 LAST_TOUCH_REACH = FPS  # the kick that sent the ball out is at most about 1 s before the line
 STOPPAGE_LOOKBACK = 2 * FPS  # a crossing can precede the D segment by this much
 NO_SEGMENT_LOOKBACK = 15 * FPS  # restart with no D segment behind it
-RULE_NAMES = ("tag", "out", "nearest", "phase", "unknown")
+FIRST_CONTROL_REACH = 4 * FPS  # a restart reaches its first receiver inside 4 s, even a goal kick
+RULE_NAMES = ("first_control", "tag", "out", "nearest", "phase", "unknown")
 
 # --- restarts inside Smart Tagging SET PIECES -----------------------------------------------------
 # The aggregate profile around tag starts shows the stoppage from about -15 s to +5 s and play
@@ -335,7 +336,7 @@ def resolve_restart_teams(restarts, in_segment, feats, tags, pitch):
     counts = dict.fromkeys(RULE_NAMES, 0)
     out = []
     for restart in restarts:
-        team, rule = restart.team, "tag"
+        team, rule = restart.team, restart.rule or "tag"
         if team is None and restart.kind not in (KICKOFF_TYPE, GOAL_KICKOFF_TYPE):
             low = _stoppage_start(segment_starts, segment_ends, restart.frame)
             inside = crossings[(crossings >= low) & (crossings < restart.frame)]
@@ -358,6 +359,29 @@ def resolve_restart_teams(restarts, in_segment, feats, tags, pitch):
         counts[rule] += 1
         out.append(restart._replace(team=team, rule=rule))
     return out, counts
+
+
+def first_control(events, frame):
+    """(team, latency in frames) of the first control event starting within 4 s of `frame`, or None.
+
+    An event already running at the restart does not count: that is a taker standing over a dead ball.
+    """
+    for event in events:
+        if frame <= event.start <= frame + FIRST_CONTROL_REACH:
+            return event.team, event.start - frame
+    return None
+
+
+def apply_first_control(restarts, events):
+    """(restarts with team and rule set where a control event answers, latencies in frames)."""
+    out, latencies = [], []
+    for restart in restarts:
+        found = first_control(events, restart.frame)
+        if found is not None:
+            restart = restart._replace(team=found[0], rule="first_control")
+            latencies.append(found[1])
+        out.append(restart)
+    return out, latencies
 
 
 def carry_previous_owner(restarts, labels):

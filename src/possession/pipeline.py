@@ -1,7 +1,7 @@
-"""v3 possession model: features -> dead ball and restarts -> control events -> gated Viterbi ->
-touch merge -> CSV.
+"""v4 possession model: features -> dead ball and restarts -> control events -> gated Viterbi ->
+touch merge -> CSV. Switches are in config.py.
 
-    python -m src.possession.pipeline --out evaluation/results/v3_rules.csv
+    python -m src.possession.pipeline --out evaluation/results/v4_restart.csv
 
 Run from the repository root. Prints only aggregates (counts, shares, runtime), never rows.
 """
@@ -21,7 +21,8 @@ from starter.baseline import write_submission
 from starter.load_smart_tagging import load as load_smart_tagging
 
 from . import control, dead_ball, hmm
-from .diagnostics import possession_lengths
+from .config import ModelConfig
+from .diagnostics import possession_lengths, restart_consistency, team_agreement
 from .features import load_features
 
 
@@ -33,17 +34,32 @@ def check_labels(labels, graded):
         raise ValueError("an ungraded frame is not X")
 
 
-def tag_cross_check(restarts, in_segment, feats, tags, pitch):
-    """(agreeing, compared): on restarts whose tag names a team, do the other rules name it too?"""
+def restart_validation(restarts, events, in_segment, feats, pitch):
+    """(agreeing, compared) per rule, on restarts whose tag names a team.
+
+    Each rule runs blind: the tag and the tagged phases are hidden, because the v3 chain starts from
+    the tag and first_control falls back to it, so either would otherwise agree by construction.
+    """
     tagged = [r for r in restarts if r.team is not None]
-    blind, _ = dead_ball.resolve_restart_teams(
-        [r._replace(team=None) for r in tagged], in_segment, feats, [], pitch
-    )
-    pairs = [(r.team, b.team) for r, b in zip(tagged, blind) if b.team is not None]
-    return sum(a == b for a, b in pairs), len(pairs)
+    truth = [r.team for r in tagged]
+    blind = [r._replace(team=None) for r in tagged]
+
+    v3, _ = dead_ball.resolve_restart_teams(blind, in_segment, feats, [], pitch)
+    with_control, _ = dead_ball.apply_first_control(blind, events)
+    full, _ = dead_ball.resolve_restart_teams(with_control, in_segment, feats, [], pitch)
+    return {
+        "v3": team_agreement(truth, [r.team for r in v3]),
+        "first_control": team_agreement(truth, [r.team for r in full]),
+        "control_only": team_agreement(truth, [r.team for r in with_control]),
+    }
 
 
-def run(game=GAME, cache=None):
+def finish_labels(decoded, blocks, config):
+    return control.merge_touches(decoded, blocks) if config.touch_merge else decoded
+
+
+def run(game=GAME, cache=None, config=None):
+    config = config or ModelConfig()
     blocks = half_video_blocks(game)
     feats = load_features(game, cache=cache)
     n_frames = len(feats.ball_x)
@@ -57,15 +73,18 @@ def run(game=GAME, cache=None):
     score = dead_ball.dead_ball_score(feats, restarts, unlocated, forced_dead, pitch)
     in_segment = dead_ball.dead_segments(score, blocks)
 
+    events = control.control_events(feats.d_home, feats.d_away, feats.rel_home, feats.rel_away)
     every_restart = restarts + dead_ball.segment_restarts(in_segment, restarts)
+    latencies = []
+    if config.restart_rule == "first_control":
+        every_restart, latencies = dead_ball.apply_first_control(every_restart, events)
     resolved, rules = dead_ball.resolve_restart_teams(every_restart, in_segment, feats, tags, pitch)
 
-    events = control.control_events(feats.d_home, feats.d_away, feats.rel_home, feats.rel_away)
     decoded = hmm.decode(score, in_segment, events, resolved, blocks)
     if rules["unknown"]:
         carried = dead_ball.carry_previous_owner(resolved, decoded)
         decoded = hmm.decode(score, in_segment, events, carried, blocks)
-    labels = control.merge_touches(decoded, blocks)
+    labels = finish_labels(decoded, blocks, config)
 
     graded = np.zeros(n_frames, dtype=bool)
     for _, first, last in blocks:
@@ -77,7 +96,9 @@ def run(game=GAME, cache=None):
         "unlocated": len(unlocated),
         "segment_restarts": len(every_restart) - len(restarts),
         "rules": rules,
-        "tag_check": tag_cross_check(restarts, in_segment, feats, tags, pitch),
+        "validation": restart_validation(restarts, events, in_segment, feats, pitch),
+        "consistency": restart_consistency(resolved, labels),
+        "control_latency_s": float(np.median(latencies)) / 25.0 if latencies else None,
         "control_events": len(events),
         "segments": int(np.sum(np.diff(in_segment.astype(int)) == 1)),
         "merged_frames": int(np.sum(labels != decoded)),
@@ -87,9 +108,13 @@ def run(game=GAME, cache=None):
     return labels, graded, summary, blocks
 
 
+def format_validation(validation):
+    return "  ".join("{} {}/{}".format(rule, *pair) for rule, pair in validation.items())
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--out", default=os.path.join("evaluation", "results", "v3_rules.csv"))
+    parser.add_argument("--out", default=os.path.join("evaluation", "results", "v4_restart.csv"))
     parser.add_argument(
         "--cache",
         default=None,
@@ -122,11 +147,10 @@ def main():
             "  ".join(f"{k} {v}" for k, v in summary["rules"].items())
         )
     )
-    print(
-        "tagged restarts where the other rules agree with the tag: {} of {}".format(
-            *summary["tag_check"]
-        )
-    )
+    print("blind agreement with the set-piece tag  " + format_validation(summary["validation"]))
+    print("restart team owns the next possession  {} of {}".format(*summary["consistency"]))
+    if summary["control_latency_s"] is not None:
+        print(f"median restart to first control {summary['control_latency_s']:.2f} s")
     print(
         "control events {}  D segments {}  frames relabelled as touches {}".format(
             summary["control_events"], summary["segments"], summary["merged_frames"]
