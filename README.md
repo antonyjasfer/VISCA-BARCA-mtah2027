@@ -1,3 +1,86 @@
+# VISCA BARCA: ball possession from automatic tracking
+
+Our entry to More than a Hack 2027, Phase 1: one label per frame (`H`, `A` or `D`) for FC Barcelona vs
+Athletic Club, produced by an algorithm with no training and no hand labels.
+
+## The method in five lines
+
+1. Stream the automatic tracking into per-frame features: ball position and speed, the nearest player
+   of each team, and how closely the ball moves with that player.
+2. Detect dead balls from independent cues: ball out, lost at a line or still, collective speed, goals.
+3. Find each restart inside the Smart Tagging set-piece windows by the first sharp ball acceleration.
+4. Define control as a player within 1.5 m with the ball moving with them for at least 0.5 s.
+5. Decode with a three-state Viterbi in which the team can change only at a control event or a restart.
+
+Details: [TECHNICAL_REPORT.md](TECHNICAL_REPORT.md), and every constant in [METHOD.md](METHOD.md).
+
+## Setup
+
+Python 3.11 is required (we used 3.11.15; see `.python-version`).
+
+```bash
+python -m venv .venv
+```
+
+Activate it (`.venv\Scripts\activate` on Windows, `source .venv/bin/activate` elsewhere), then:
+
+```bash
+pip install -r requirements-model.txt
+```
+
+## Data
+
+The match data is gated and is not in this repository. After enrolling, put these files in
+`data/tactical/`, keeping their names:
+
+```
+data/tactical/BAR-ATH_tactical_atd.txt
+data/tactical/BAR-ATH_tactical_atd.xml
+data/tactical/BAR-ATH_tactical_homography.csv
+data/tactical/BAR-ATH_tactical_smart_tagging.xml
+```
+
+The homography is listed because it is part of the bundle; the pipeline does not read it.
+
+## Reproduce
+
+```bash
+python make_submission.py
+```
+
+This runs the full pipeline, writes `submissions/VISCA BARCA.csv`, runs
+`evaluation/validate_submission.py` on it and prints its SHA-256. It takes under a minute on a laptop
+(14-20 s in our runs, without counting the install).
+
+Expected SHA-256:
+
+| | |
+|---|---|
+| Windows (CRLF, how we produced our file) | `69d5d3bcbb80c1df88267462ada4cf2ac55e3e04e56f6d7dcaa0b033ddd214f4` |
+| Any platform, line endings normalised to LF | `a93bba3914b38fda65206339f3c54c78f2d204a35b87d84edca101dbb8264dbd` |
+
+The file is written in text mode, so the line endings, and therefore the file's own hash, follow the
+platform. The script prints both. Our reproduction was tested on Windows only.
+
+## Tests and label-free checks
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest tests -q
+python -m src.possession.diagnostics "submissions/VISCA BARCA.csv"
+python -m src.possession.ablation
+```
+
+Everything added by the team is in `make_submission.py`, `src/possession/`, `tests/`, `METHOD.md` and
+`TECHNICAL_REPORT.md`. The organisers' scorer in `evaluation/` is unchanged.
+
+---
+
+# Original challenge README
+
+Everything below is the organisers' README, unchanged: © Metrica Sports, released under the MIT Licence.
+Original repository: <https://github.com/metrica-sports/more-than-a-hack-2027>.
+
 # More than a Hack 2027 — Phase 1: Ball Possession
 
 **Organised by [Metrica Sports](https://metrica-sports.com), [FC Barcelona](https://www.fcbarcelona.com)

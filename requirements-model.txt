@@ -1,8 +1,7 @@
-# Pinned dependencies for src/possession (v3 rules model). Python 3.9+; developed on 3.11.
-# The pipeline streams the raw ATD with numpy and uses pandas only for rolling windows and
-# forward-fill. kloppy is not needed. Versions are the ones the reported results were produced with.
+# Everything needed to reproduce the submission, pinned with its dependencies. Python 3.11, because
+# numpy 2.4.6 requires it. These are the versions the submission was produced with.
 numpy==2.4.6
 pandas==3.1.0
-# tests/ and code hygiene only
-pytest==8.3.5
-ruff==0.17.3
+python-dateutil==4.0.0
+six==1.17.0
+tzdata==2026.6

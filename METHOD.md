@@ -3,12 +3,15 @@
 Branch `v4-restart`. Reproduce with
 
 ```
-pip install -r requirements.txt -r requirements-model.txt
+pip install -r requirements-dev.txt
+python make_submission.py
 python -m src.possession.pipeline --out evaluation/results/v4_restart.csv
 python -m src.possession.diagnostics evaluation/results/v4_restart.csv
 python -m src.possession.ablation
 python -m pytest tests -q
 ```
+
+`make_submission.py` writes the same labels to `submissions/VISCA BARCA.csv`.
 
 The run is deterministic (no randomness, Viterbi ties go to the lower state index). `--cache PATH`
 stores the extracted features as an `.npz`; a cached and an uncached run produce a byte-identical

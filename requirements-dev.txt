@@ -1,0 +1,4 @@
+# Only for running tests/ and the code checks. Not needed to reproduce the submission.
+-r requirements-model.txt
+pytest==8.3.5
+ruff==0.17.3
