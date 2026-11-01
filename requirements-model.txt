@@ -1,0 +1,5 @@
+# Pinned dependencies for src/possession (v1 HMM). Python 3.9+; developed on 3.11.
+# The pipeline streams the raw ATD with numpy and uses pandas only for rolling windows and
+# forward-fill. kloppy is not needed. Versions are the ones the reported results were produced with.
+numpy==2.4.6
+pandas==3.1.0
