@@ -44,6 +44,8 @@ class Features:
     ball_speed: np.ndarray        # m/s
     d_home: np.ndarray            # m, ball to nearest tracked home player
     d_away: np.ndarray            # m, ball to nearest tracked away player
+    rel_home: np.ndarray          # m/s, ball velocity relative to that home player
+    rel_away: np.ndarray          # m/s, ball velocity relative to that away player
     ball_in_pitch: np.ndarray     # 1.0 inside, 0.0 outside (beyond margin), NaN if no ball
     mean_speed: np.ndarray        # m/s, mean over tracked players
     n_tracked: np.ndarray         # tracked slots with a position
@@ -114,14 +116,33 @@ def ball_speed_ms(x, y, half_span=SPEED_HALF_SPAN):
     return speed
 
 
-def nearest_team_distance(px_m, py_m, ball_x, ball_y, mask):
-    """Distance from the ball to the closest tracked player of the slots in `mask`; NaN if none."""
-    dist = np.hypot(px_m[:, mask] - ball_x[:, None], py_m[:, mask] - ball_y[:, None])
+def nearest_player(px_m, py_m, ball_x, ball_y, mask):
+    """(distance, slot) of the closest tracked player among the slots in `mask`; NaN if none."""
+    slots = np.flatnonzero(mask)
+    dist = np.hypot(px_m[:, slots] - ball_x[:, None], py_m[:, slots] - ball_y[:, None])
     dist = np.where(np.isnan(dist), np.inf, dist)
-    nearest = dist.min(axis=1)
+    column = dist.argmin(axis=1)
+    nearest = dist[np.arange(len(dist)), column]
     nearest[np.isinf(nearest)] = np.nan
-    nearest[np.isnan(ball_x)] = np.nan
-    return nearest
+    return nearest, slots[column]
+
+
+def relative_speed(px_m, py_m, ball_x, ball_y, slot, half_span=SPEED_HALF_SPAN):
+    """|ball velocity - velocity of player `slot[t]`| at each frame, m/s, over the speed baseline.
+
+    The slot is held fixed across the +/-half_span frames, so this follows one tracklet even if
+    another player becomes nearest at a neighbouring frame. NaN wherever an end is missing.
+    """
+    n = len(ball_x)
+    out = np.full(n, np.nan)
+    now = np.arange(half_span, n - half_span)
+    ahead, behind = now + half_span, now - half_span
+    dt = 2.0 * half_span / FPS
+    player = slot[now]
+    dvx = (ball_x[ahead] - ball_x[behind]) - (px_m[ahead, player] - px_m[behind, player])
+    dvy = (ball_y[ahead] - ball_y[behind]) - (py_m[ahead, player] - py_m[behind, player])
+    out[now] = np.hypot(dvx, dvy) / dt
+    return out
 
 
 def compute(raw_path, meta_path, n_frames, pitch):
@@ -142,8 +163,10 @@ def compute(raw_path, meta_path, n_frames, pitch):
     ball_y[np.isnan(ball_x)] = np.nan
     ball_x[np.isnan(ball_y)] = np.nan
 
-    d_home = nearest_team_distance(px_m, py_m, ball_x, ball_y, team == 0)
-    d_away = nearest_team_distance(px_m, py_m, ball_x, ball_y, team == 1)
+    d_home, slot_home = nearest_player(px_m, py_m, ball_x, ball_y, team == 0)
+    d_away, slot_away = nearest_player(px_m, py_m, ball_x, ball_y, team == 1)
+    rel_home = relative_speed(px_m, py_m, ball_x, ball_y, slot_home)
+    rel_away = relative_speed(px_m, py_m, ball_x, ball_y, slot_away)
 
     inside = ((ball_x >= -PITCH_MARGIN_M) & (ball_x <= length + PITCH_MARGIN_M)
               & (ball_y >= -PITCH_MARGIN_M) & (ball_y <= width + PITCH_MARGIN_M))
@@ -162,6 +185,7 @@ def compute(raw_path, meta_path, n_frames, pitch):
         ball_observed=~np.isnan(observed_x),
         ball_speed=f32(ball_speed_ms(ball_x, ball_y)),
         d_home=f32(d_home), d_away=f32(d_away),
+        rel_home=f32(rel_home), rel_away=f32(rel_away),
         ball_in_pitch=f32(in_pitch),
         mean_speed=f32(mean_speed),
         n_tracked=n_tracked.astype(np.int16),

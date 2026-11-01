@@ -1,6 +1,6 @@
-"""v1 possession model: features -> dead-ball segments -> HMM/Viterbi -> frame,label CSV.
+"""v2 possession model: features -> dead ball and restarts -> control events -> gated Viterbi -> CSV.
 
-    python -m src.possession.pipeline --out evaluation/results/v1_hmm.csv
+    python -m src.possession.pipeline --out evaluation/results/v2_control.csv
 
 Run from the repository root. Prints only aggregates (counts, shares, runtime), never rows.
 """
@@ -15,71 +15,72 @@ import numpy as np
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
-from games import GAME, half_video_blocks  # noqa: E402
+from games import GAME, GAMES, half_video_blocks  # noqa: E402
 from starter.baseline import write_submission  # noqa: E402
 from starter.load_smart_tagging import load as load_smart_tagging  # noqa: E402
 
-from . import dead_ball, hmm  # noqa: E402
+from . import control, dead_ball, hmm  # noqa: E402
+from .diagnostics import fill_abstentions, possession_lengths  # noqa: E402
 from .features import load_features  # noqa: E402
-
-SET_PIECE_CODE = "set pieces"
 
 
 def run(game=GAME, cache=None):
     blocks = half_video_blocks(game)
     feats = load_features(game, cache=cache)
     n_frames = len(feats.ball_x)
+    pitch = GAMES[game]["pitch"]
 
-    events = load_smart_tagging(game)
-    restarts = sorted(e["start_frame"] for e in events
-                      if (e["code"] or "").strip().lower() == SET_PIECE_CODE)
-
-    kickoff_dead = dead_ball.pre_kickoff(n_frames, blocks, events)
-    score = dead_ball.dead_ball_score(feats, restarts, kickoff_dead)
+    tags = load_smart_tagging(game)
+    restarts, unlocated = dead_ball.locate_restarts(tags, feats)
+    kickoff_dead = dead_ball.pre_kickoff(n_frames, blocks, tags)
+    score = dead_ball.dead_ball_score(feats, restarts, unlocated, kickoff_dead, pitch)
     in_segment = dead_ball.dead_segments(score, blocks)
-    labels = hmm.decode(feats, score, in_segment, blocks)
+    all_restarts = restarts + dead_ball.segment_restarts(in_segment, restarts, feats)
+
+    events = control.control_events(feats.d_home, feats.d_away, feats.rel_home, feats.rel_away)
+    decoded = hmm.decode(score, in_segment, events, all_restarts, blocks)
+    labels = control.abstain_gaps(decoded, ~np.isnan(feats.ball_x), events, blocks)
 
     graded = np.zeros(n_frames, dtype=bool)
     for _, first, last in blocks:
         graded[first:last + 1] = True
-    assert set(np.unique(labels[graded])) <= {"H", "A", "D"}, "an X or stray label on a graded frame"
+    assert set(np.unique(decoded[graded])) <= {"H", "A", "D"}, "a stray label on a graded frame"
     assert set(np.unique(labels[~graded])) <= {"X"}, "a label outside the graded halves"
-    return labels, graded, in_segment
+    for _, first, last in blocks:
+        filled = fill_abstentions(labels[first:last + 1])
+        assert (filled == decoded[first:last + 1]).all(), "an X changed what the scorer will see"
 
-
-def possession_stats(labels, graded):
-    """Count of possessions (maximal H or A runs) and mean duration, summed over the two halves."""
-    count, frames = 0, 0
-    for half_labels in np.split(labels, np.flatnonzero(np.diff(graded.astype(int)) != 0) + 1):
-        if half_labels[0] == "X":
-            continue
-        change = np.concatenate(([True], half_labels[1:] != half_labels[:-1]))
-        starts = np.flatnonzero(change)
-        ends = np.append(starts[1:], len(half_labels))
-        for s, e in zip(starts, ends):
-            if half_labels[s] in ("H", "A"):
-                count += 1
-                frames += e - s
-    return count, (frames / count / 25.0 if count else 0.0)
+    summary = {
+        "located": len(restarts), "unlocated": len(unlocated),
+        "restart_team_unknown": sum(r.team is None for r in all_restarts),
+        "segment_restarts": len(all_restarts) - len(restarts),
+        "control_events": len(events),
+        "segments": int(np.sum(np.diff(in_segment.astype(int)) == 1)),
+    }
+    return labels, decoded, graded, summary, blocks
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--out", default=os.path.join("evaluation", "results", "v1_hmm.csv"))
+    parser.add_argument("--out", default=os.path.join("evaluation", "results", "v2_control.csv"))
     parser.add_argument("--cache", default=None,
                         help="optional .npz for the extracted features (speeds up reruns; output is identical)")
     args = parser.parse_args()
 
     started = time.time()
-    labels, graded, in_segment = run(cache=args.cache)
+    labels, decoded, graded, summary, blocks = run(cache=args.cache)
     write_submission(args.out, labels)
 
-    shares = {k: float(np.mean(labels[graded] == k)) for k in "HAD"}
-    count, mean_s = possession_stats(labels, graded)
+    shares = {k: float(np.mean(labels[graded] == k)) for k in "HADX"}
+    lengths = np.concatenate([possession_lengths(decoded[first:last + 1]) for _, first, last in blocks])
     print("wrote {}".format(args.out))
-    print("graded class shares  H {:.3f}  A {:.3f}  D {:.3f}".format(shares["H"], shares["A"], shares["D"]))
-    print("possessions {}  mean duration {:.1f} s  D segments {}".format(
-        count, mean_s, int(np.sum(np.diff(in_segment.astype(int)) == 1))))
+    print("graded class shares  H {:.3f}  A {:.3f}  D {:.3f}  X {:.3f}".format(
+        shares["H"], shares["A"], shares["D"], shares["X"]))
+    print("possessions {}  mean duration {:.1f} s".format(len(lengths), lengths.mean() / 25.0))
+    print("restarts located {}  not located {}  team unknown {}  from D segments {}".format(
+        summary["located"], summary["unlocated"], summary["restart_team_unknown"],
+        summary["segment_restarts"]))
+    print("control events {}  D segments {}".format(summary["control_events"], summary["segments"]))
     print("runtime {:.0f} s".format(time.time() - started))
 
 
