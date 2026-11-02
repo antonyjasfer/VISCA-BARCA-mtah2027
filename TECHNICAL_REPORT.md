@@ -67,8 +67,8 @@ Dropped along the way:
 ## Use of LLMs
 
 An AI coding assistant (Anthropic's Claude, via Claude Code) was used to write, test and review the code
-and documentation. In line with the terms of use, no match data, video or extract of them was uploaded
-to or shown to it: the data files were only read by our own scripts, run locally, and the assistant saw
+and documentation. In line with the competition's rule on LLMs (OVERVIEW.md, FAQ.md), no match data, video
+or extract of them was uploaded to or shown to it: the data files were only read by our own scripts, run locally, and the assistant saw
 only aggregate outputs such as scores, counts, shares and error messages. No LLM is part of the pipeline
 that produces the submission.
 

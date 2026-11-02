@@ -49,8 +49,8 @@ python make_submission.py
 ```
 
 This runs the full pipeline, writes `submissions/VISCA BARCA.csv`, runs
-`evaluation/validate_submission.py` on it and prints its SHA-256. It takes under a minute on a laptop
-(14-20 s in our runs, without counting the install).
+`evaluation/validate_submission.py` on it and prints its SHA-256. It takes about 15-45 s on a laptop,
+without counting the install (14-41 s in our runs).
 
 Expected SHA-256:
 
