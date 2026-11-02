@@ -209,7 +209,7 @@ pip install -r requirements-model.txt
 python make_submission.py
 ```
 
-Python 3.11, with the data in `data/tactical/` (see README.md). The run is deterministic, takes under a
-minute, writes `submissions/VISCA BARCA.csv` with LF line endings, validates it and prints its SHA-256.
-A fresh clone with a fresh environment reproduced the identical file on Windows; the expected hash is in
+Python 3.11, with the data in `data/tactical/` (see README.md). The run is deterministic and typically
+under a minute on a laptop, without counting the install; it varies with machine load. It writes
+`submissions/VISCA BARCA.csv` with LF line endings, validates it and prints its SHA-256. A fresh clone with a fresh environment reproduced the identical file on Windows; the expected hash is in
 README.md.
