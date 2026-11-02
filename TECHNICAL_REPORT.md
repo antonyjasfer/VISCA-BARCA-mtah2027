@@ -1,6 +1,11 @@
 # VISCA BARCA: technical report
 
-More than a Hack 2027, Phase 1. Draft. Aggregate numbers only; this document contains no data rows.
+**Team:** VISCA BARCA
+· **Members:** A. Antony Selva Jasfer, C. Akash Narayanan, IV. Pranav Moorthy
+· **Repository:** <https://github.com/antonyjasfer/VISCA-BARCA-mtah2027>
+· **Commit:** `dd91b93` (the last commit that changes code; later commits change documentation only)
+
+More than a Hack 2027, Phase 1. Aggregate numbers only; this document contains no data rows.
 
 ## Approach and why
 
@@ -58,6 +63,14 @@ Dropped along the way:
 - The private ground truth was never available to us. No human-produced event or tracking data was used.
 - Constants come from football reasoning and from label-free aggregates of the provided tracking, such as
   whole-match quantiles of collective speed.
+
+## Use of LLMs
+
+An AI coding assistant (Anthropic's Claude, via Claude Code) was used to write, test and review the code
+and documentation. In line with the terms of use, no match data, video or extract of them was uploaded
+to or shown to it: the data files were only read by our own scripts, run locally, and the assistant saw
+only aggregate outputs such as scores, counts, shares and error messages. No LLM is part of the pipeline
+that produces the submission.
 
 ## Possession rules implemented
 
@@ -166,7 +179,7 @@ these 5 minutes do not exercise the difference in restart rule. The organisers s
 full-match order can differ even for trivial baselines.
 
 Full match, label-free: 60.2 live minutes (D 43.1% of graded frames), 245 possessions, mean 14.7 s,
-median about 8-9 s, 23 possessions under 2 s. Agreement with team-tagged phases is 0.828 attacking and
+median about 9 s, 23 possessions under 2 s. Agreement with team-tagged phases is 0.828 attacking and
 0.840 defending. 96.6% of set pieces have at least 1 s of D within 10 s of the tag start.
 
 ## Limitations
@@ -182,6 +195,8 @@ median about 8-9 s, 23 possessions under 2 s. Agreement with team-tagged phases 
 - **False restarts.** Any fast ball after a calm second in the search window counts, and a false restart
   can change the owner on its own.
 - **Short stoppages.** A false D segment of 1 s splits one possession in two.
+- **Score ties.** Viterbi breaks exact score ties toward the lower state index (H); we expect this to be
+  rare but did not measure it.
 
 With more time we would recover ball position in gaps from player movement, use the video to confirm
 restarts, and make restart evidence depend on how much it can be trusted.
