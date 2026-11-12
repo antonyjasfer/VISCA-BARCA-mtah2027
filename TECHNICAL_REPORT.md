@@ -64,6 +64,11 @@ Dropped along the way:
 - Constants come from football reasoning and from label-free aggregates of the provided tracking, such as
   whole-match quantiles of collective speed.
 
+This complies with the organisers' rules clarification of 3 November 2026: no parameter was trained,
+fitted or calibrated on the ground-truth possession data or on the provided video; the video is not an
+input to the pipeline. Constants come from football reasoning and from automatic, label-free checks on
+the provided tracking and tagging, which the clarification permits.
+
 ## Use of LLMs
 
 An AI coding assistant (Anthropic's Claude, via Claude Code) was used to write, test and review the code
