@@ -1,7 +1,7 @@
 # VISCA BARCA: ball possession from automatic tracking
 
 Our entry to More than a Hack 2027, Phase 1: one label per frame (`H`, `A` or `D`) for FC Barcelona vs
-Athletic Club, produced by an algorithm with no training and no hand labels.
+Athletic Club, produced by an algorithm with no training and no hand labels..
 
 ## The method in five lines
 
