@@ -276,3 +276,4 @@ competition only, under the terms you accept at enrolment.
   url    = {https://github.com/metrica-sports/more-than-a-hack-2027}
 }
 ```
+Contributors of this project incude Akash Narayanan , Mithiles , Pranav Moorthy
